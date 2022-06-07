@@ -37,20 +37,21 @@ tpm.df <- read.csv("formatted_output/full_merged_tpm.csv",row.names="target_id")
 ```
 Plot raw, tpm, vst, and log histograms 
 ```{r}
-#ggplot(tpm.df,aes(x="Pup_1-cecal_contents_53_1A_Pup_1.tpm")) + geom_histogram(stat="bin")
-#ggplot(vsc.df.transpose, aes(x=Pup1-cecal_contents_53_1A_Pup_1.tpm)) + geom_histogram()
-#ggplot(unlist(tpm.df)) + geom_histogram()
-tpm_hist <- ggplot(gather(tpm.df, cols, value), aes(x = value)) + 
+PLOT_RAW_HISTS <- FALSE
+if (PLOT_RAW_HISTS) {
+  tpm_hist <- ggplot(gather(tpm.df, cols, value), aes(x = value)) + 
        geom_histogram(bins=50) 
-tpm_hist + ggtitle("TPM Histogram") + theme(plot.title = element_text(hjust = 0.5))
+  tpm_hist + ggtitle("TPM Histogram") + theme(plot.title = element_text(hjust = 0.5))
+  
+  vst_hist <- ggplot(gather(vsc.df, cols, value), aes(x = value)) + 
+         geom_histogram(bins=50) 
+  vst_hist + ggtitle("VST Estimated Counts Histogram") + theme(plot.title = element_text(hjust = 0.5))
+  
+  log_hist <- ggplot(gather(log_mc.df, cols, value), aes(x = value)) + 
+         geom_histogram(bins=50) 
+  log_hist + ggtitle("Log Counts Histogram") + theme(plot.title = element_text(hjust = 0.5))
+}
 
-vst_hist <- ggplot(gather(vsc.df, cols, value), aes(x = value)) + 
-       geom_histogram(bins=50) 
-vst_hist + ggtitle("VST Estimated Counts Histogram") + theme(plot.title = element_text(hjust = 0.5))
-
-log_hist <- ggplot(gather(log_mc.df, cols, value), aes(x = value)) + 
-       geom_histogram(bins=50) 
-log_hist + ggtitle("Log Counts Histogram") + theme(plot.title = element_text(hjust = 0.5))
 ```
 ```{r}
 #Tpm and prevalence filtering functions#
@@ -200,9 +201,11 @@ expr_histogram <- function(expr.df,expr_type="log",split_type="expected",PREVOTE
   hist <- hist + guides(color=guide_legend(override.aes = list(size = 0.5)))
   hist <- hist + theme(legend.title = element_text(size = 6), 
                legend.text = element_text(size = 6))
-  
   return(hist)
 }
+
+
+
 
 #Expression Hists for vst, log, rlog - Expected expression based on colonization split 
 vst_hist_expected_split <- expr_histogram(filt_vst.df,expr_type="vst",split_type="expected")
@@ -227,79 +230,46 @@ if (SYNC_YLIM) {
   combined_exp_prev <- vst_hist_expected_split + log_hist_expected_split + rlog_hist_expected_split +
   vst_hist_prev_split + log_hist_prev_split + rlog_hist_prev_split +plot_layout(ncol = 3, guides = "collect") #(2,3) expected hist / prevotella hist
   
-  exp_ranges_y <- c(ggplot_build(combined_exp_prev[[1]])$layout$panel_scales_y[[1]]$range$range,
-                ggplot_build(combined_exp_prev[[2]])$layout$panel_scales_y[[1]]$range$range,
-                ggplot_build(combined_exp_prev[[3]])$layout$panel_scales_y[[1]]$range$range)
-  prev_ranges_y <- c(ggplot_build(combined_exp_prev[[4]])$layout$panel_scales_y[[1]]$range$range,
-                  ggplot_build(combined_exp_prev[[5]])$layout$panel_scales_y[[1]]$range$range,
-                  ggplot_build(combined_exp_prev[[6]])$layout$panel_scales_y[[1]]$range$range)
+  exp_ranges_y <- c(ggplot_build(combined_exp_prev[[1]])$layout$panel_scales_y[[1]]$range$range,ggplot_build(combined_exp_prev[[2]])$layout$panel_scales_y[[1]]$range$range, ggplot_build(combined_exp_prev[[3]])$layout$panel_scales_y[[1]]$range$range)
+  prev_ranges_y <- c(ggplot_build(combined_exp_prev[[4]])$layout$panel_scales_y[[1]]$range$range,ggplot_build(combined_exp_prev[[5]])$layout$panel_scales_y[[1]]$range$range,ggplot_build(combined_exp_prev[[6]])$layout$panel_scales_y[[1]]$range$range)
   for (i in 1:3) {
     combined_exp_prev[[i]] <- combined_exp_prev[[i]] + ylim(min(exp_ranges_y),max(exp_ranges_y))
     combined_exp_prev[[i+3]] <- combined_exp_prev[[i+3]] + ylim(min(prev_ranges_y),max(prev_ranges_y))
   }
 } else {
-  combined_exp_prev <- vst_hist_expected_split + log_hist_expected_split + rlog_hist_expected_split +
-  vst_hist_prev_split + log_hist_prev_split + rlog_hist_prev_split +plot_layout(ncol = 3, guides = "collect") #(2,3) expected hist / prevotella hist
+  combined_exp_prev <- vst_hist_expected_split + log_hist_expected_split + rlog_hist_expected_split + vst_hist_prev_split + log_hist_prev_split + rlog_hist_prev_split +plot_layout(ncol = 3, guides = "collect") #(2,3) expected hist / prevotella hist
 }
 
 #Save figure 
 hist_fpath <- sprintf("figures/expression_hist/tpm%s_prev%s_transformed_hist.png",inp_threshold,inp_prevalence)
+print(combined_exp_prev)
 ggsave(hist_fpath,width=12,heigh=8,units="in")
 
 ```
 
 
-Test Prevotella Prevalence and TPM filtering 
+#Testing for qqplots
 ```{r}
-
-get_prevotella_filtered_gene_vec <- function(tpm.df, inp_threshold, inp_prevalence) {
-    #' @param tpm.df locus rows x sample columns
-    #' @param inp_threshold threshold of tpm
-    #' @param inp_prevalence the proportion of samples that are above inp_threshold
-  PREVOTELLA_ROW_RE <- "(NJCFFJJN)|(NBCBLOMG)"
-  PREVOTELLA_COL_RE <- "1C"
-  num_samples <- ncol(tpm.df)
-  prevotella_samples <- grep(PREVOTELLA_COL_RE, colnames(tpm.df))
-  prevotella.df <- select(tpm.df,prevotella_samples)
-  num_prev_samples <- ncol(prevotella.df)
-  #Logic has two cases: 
-  #1.number of samples in tpm.df which have tpm > inp_threshold is 
-  #greater than number of samples * inp_prevalence
-  #2.Prevotella case: number of prevotella containing (1C) samples > inp_threshold is
-  #greater than numper of prevotella samples AND row corresponds to prevotella locus
-  genes_passing <- rownames(data.frame(logic = ((rowSums(tpm.df > inp_threshold) > num_samples*inp_prevalence) | (rowSums(prevotella.df > inp_threshold) >num_prev_samples*inp_prevalence & (grepl(PREVOTELLA_ROW_RE, row.names(tpm.df)))))) %>% filter(logic == TRUE))
-  return(genes_passing)
+for (expr.df in list(filt_vst.df,filt_log.df,filt_rlog.df)) {
+  # prevotella_split_samples <-vector_prev2A_split(filt_rlog.df,split="prevotella")
+  prevotella_split_samples <-vector_prev2A_split(expr.df,split="prevotella")
+  np_loci <- prevotella_split_samples[[1]]
+  expr_vec <- np_loci
+  par(mfrow=c(1,1))
+  DEFAULT_TITLE="Non-prevotella loci"
+  expr_type <- "rlog"
+  title_str <- sprintf("%s %s expression Q-Q Plot",DEFAULT_TITLE,expr_type)
+  # qqp <- qqnorm(expr_vec,main=title_str) 
+  # qqline(expr_vec)
+  ks_test <- ks.test(expr_vec,'pnorm',exact=TRUE)
+  ks_p <- ks_test$p.value
+  ks_D <- ks_test$statistic
+  print(ks_p)
+  print(ks_D)
 }
-
-
-#' Flatten expr.df into two vectors, corresponding to samples with and without expected expression
-#'@param expr.df DataFrame containing expression data per locus; must have column names with and without NON_PREVOTELLA_COL_RE
-#'@param PREVOTELLA_ROW_RE regular expression which matches rows corresponding to loci from either Prevotella stercorea or Prevotella copri  
-#'@param NON_PREVOTELLA_ROW_RE regular expression matching columns corresponding to samples which were not gavaged with Prevotella sp 
-#'Returns: output, list containing 1. expected_expr_samples and 2. expected_no_expr_samples
-#'1. expected expr_samples: vector of expression data for both non-prevotella loci and prevotella loci from prevotella-colonized samples 
-#'2. expected_no_expr_samples: vector of expression data for prevotella loci from samples not colonized with Prevotella (ie "expected zeroes")
-vector_prev2A_split <- function(expr.df,PREVOTELLA_ROW_RE= "(NJCFFJJN)|(NBCBLOMG)",NON_PREVOTELLA_COL_RE="2A") {
-  prev_rows.df <- filter(expr.df,grepl(PREVOTELLA_ROW_RE,rownames(expr.df)))
-  non_prev_rows.df <- filter(expr.df,!grepl(PREVOTELLA_ROW_RE,rownames(expr.df)))
-  prev_rows_np_samples.df <- select(prev_rows.df,grep(NON_PREVOTELLA_COL_RE, colnames(prev_rows.df)))
-  prev_rows_p_samples.df <- select(prev_rows.df,!grep(NON_PREVOTELLA_COL_RE, colnames(prev_rows.df)))
-  #Flatten DataFrames into vectors
-  non_prev_rows <- unlist(non_prev_rows.df)
-  prev_rows_p_samples <- unlist(prev_rows_p_samples.df)
-  prev_rows_np_samples <- unlist(prev_rows_np_samples.df)
-  #Combine non_prev_rows and prev_rows_p_samples int expected expr_samples
-  expected_expr_samples <- c(non_prev_rows,prev_rows_p_samples)
-  expected_no_expr_samples <- prev_rows_np_samples
-  output <- list(expected_expr_samples,expected_no_expr_samples)
-  return(output)
-}
-
-output <- vector_prev2A_split(filt_log.df)
-expected_expr <- output[[1]]
-expected_no_expr <- output[[2]]
-
 ```
+
+
 
 TODO: Test different tpm and prevalence thresholds (paramter sweep), assess normality and 
 number of genes retained 
