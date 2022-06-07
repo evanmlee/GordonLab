@@ -2,38 +2,48 @@
 title: "VST_counts"
 output: html_notebook
 ---
-
-Load merged estimated counts table (int version). Convert to matrix for DESeq2
-vst then back to DataFrame for writing output 
 ```{r}
 library(DESeq2)
 library(tidyverse)
 library(icesTAF)
 library(ggplot2)
 library(patchwork)
-merged_counts_int.df <- read.csv("formatted_output/full_merged_count_int.csv",row.names="target_id")
-mc_matrix <- data.matrix(merged_counts_int.df)
-mode(mc_matrix) <- "integer"
-
-#sapply(merged_counts.df,mode)
-vsc.df <- as.data.frame(vst(mc_matrix))
-transformed_fpath = "formatted_output/transformed"
-mkdir(transformed_fpath)
-vsc_fpath = sprintf("%s/full_merged_vst.csv",transformed_fpath)
-write.csv(vsc.df,vsc_fpath,quote=FALSE)
-```
-Load merged estimated counts table (numeric version). Log transform, write to csv
-```{r}
-merged_counts_num.df <- read.csv("formatted_output/full_merged_count.csv",row.names="target_id")
-mc_num_matrix = data.matrix(merged_counts_num.df)
-PSEUDOCOUNT = 0.1
-log_mc = log(mc_num_matrix + PSEUDOCOUNT)
-log_mc.df <- as.data.frame(log_mc)
-log_mc_fpath = sprintf("%s/full_merged_log.csv",transformed_fpath)
-write.csv(log_mc.df,log_mc_fpath)
 
 #Load tpm.df
 tpm.df <- read.csv("formatted_output/full_merged_tpm.csv",row.names="target_id")
+```
+
+#Raw counts data transformations (vsc, log)
+Load merged estimated counts table (both int and numeric)
+```{r}
+merged_counts_int.df <- read.csv("formatted_output/full_merged_count_int.csv",row.names="target_id")
+mc_int_matrix <- data.matrix(merged_counts_int.df)
+mode(mc_int_matrix) <- "integer"
+
+merged_counts_num.df <- read.csv("formatted_output/full_merged_count.csv",row.names="target_id")
+mc_num_matrix = data.matrix(merged_counts_num.df)
+
+
+
+```
+
+1. VST of int version of full merged counts
+2. log transform of numeric full merged counts 
+```{r}
+TRANSFORM_FULL_DATA <- FALSE 
+if (TRANSFORM_FULL_DATA) {
+  vsc.df <- as.data.frame(vst(mc_int_matrix))
+  transformed_fpath = "formatted_output/transformed"
+  mkdir(transformed_fpath)
+  vsc_fpath = sprintf("%s/full_merged_vst.csv",transformed_fpath)
+  write.csv(vsc.df,vsc_fpath,quote=FALSE)
+  
+  PSEUDOCOUNT = 0.1
+  log_mc = log(mc_num_matrix + PSEUDOCOUNT)
+  log_mc.df <- as.data.frame(log_mc)
+  log_mc_fpath = sprintf("%s/full_merged_log.csv",transformed_fpath)
+  write.csv(log_mc.df,log_mc_fpath)
+}
 ```
 Plot raw, tpm, vst, and log histograms 
 ```{r}
