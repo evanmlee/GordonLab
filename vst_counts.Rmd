@@ -28,6 +28,7 @@ mc_num_matrix = data.matrix(merged_counts_num.df)
 PSEUDOCOUNT = 0.1
 transformed_dir = "formatted_output/transformed"
 dir.create(file.path(getwd(),transformed_dir),showWarnings = FALSE)
+
 TRANSFORM_FULL_DATA <- FALSE 
 if (TRANSFORM_FULL_DATA) {
   vsc.df <- as.data.frame(vst(mc_int_matrix))
@@ -110,10 +111,13 @@ filt_log.df <- as.data.frame(log(data.matrix(mc_num.filt.df) + PSEUDOCOUNT))
 #Write filtered dataframes to csv 
 filt_vst_fpath = sprintf("%s/filt_merged_vst.csv",transformed_dir)
 write.csv(filt_vst.df,filt_vst_fpath,quote=FALSE)
+
 filt_rlog_fpath = sprintf("%s/filt_merged_rlog.csv",transformed_dir)
 write.csv(filt_rlog.df,filt_rlog_fpath,quote=FALSE)
+
 filt_log_fpath = sprintf("%s/filt_merged_log.csv",transformed_dir)
 write.csv(filt_log.df,filt_log_fpath,quote=FALSE)
+
 filt_tpm_fpath = sprintf("%s/filt_merged_tpm.csv",transformed_dir)
 write.csv(filt_tpm.df,filt_tpm_fpath,quote=FALSE)
 ```
