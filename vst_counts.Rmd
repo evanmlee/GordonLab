@@ -3,10 +3,11 @@ title: "VST_counts"
 output: html_notebook
 ---
 ```{r}
+library(ggplot2)
 library(DESeq2)
 library(tidyverse)
-library(icesTAF)
-library(ggplot2)
+# library(icesTAF)
+
 library(patchwork)
 
 #Load tpm.df
@@ -30,18 +31,19 @@ mc_num_matrix = data.matrix(merged_counts_num.df)
 1. VST of int version of full merged counts
 2. log transform of numeric full merged counts 
 ```{r}
+PSEUDOCOUNT = 0.1
+transformed_dir = "formatted_output/transformed"
+dir.create(file.path(getwd(),transformed_dir),showWarnings = FALSE)
+
 TRANSFORM_FULL_DATA <- FALSE 
 if (TRANSFORM_FULL_DATA) {
   vsc.df <- as.data.frame(vst(mc_int_matrix))
-  transformed_fpath = "formatted_output/transformed"
-  mkdir(transformed_fpath)
-  vsc_fpath = sprintf("%s/full_merged_vst.csv",transformed_fpath)
+  vsc_fpath = sprintf("%s/full_merged_vst.csv",transformed_dir)
   write.csv(vsc.df,vsc_fpath,quote=FALSE)
   
-  PSEUDOCOUNT = 0.1
   log_mc = log(mc_num_matrix + PSEUDOCOUNT)
   log_mc.df <- as.data.frame(log_mc)
-  log_mc_fpath = sprintf("%s/full_merged_log.csv",transformed_fpath)
+  log_mc_fpath = sprintf("%s/full_merged_log.csv",transformed_dir)
   write.csv(log_mc.df,log_mc_fpath)
 }
 ```
@@ -122,16 +124,16 @@ filt_rlog.df <-as.data.frame(rlog(mc_filt_matrix))
 filt_log.df <- as.data.frame(log(data.matrix(mc_num.filt.df) + PSEUDOCOUNT))
 
 #Write filtered dataframes to csv 
-filt_vst_fpath = sprintf("%s/filt_merged_vst.csv",transformed_fpath)
+filt_vst_fpath = sprintf("%s/filt_merged_vst.csv",transformed_dir)
 write.csv(filt_vst.df,filt_vst_fpath,quote=FALSE)
 
-filt_rlog_fpath = sprintf("%s/filt_merged_rlog.csv",transformed_fpath)
+filt_rlog_fpath = sprintf("%s/filt_merged_rlog.csv",transformed_dir)
 write.csv(filt_rlog.df,filt_rlog_fpath,quote=FALSE)
 
-filt_log_fpath = sprintf("%s/filt_merged_log.csv",transformed_fpath)
+filt_log_fpath = sprintf("%s/filt_merged_log.csv",transformed_dir)
 write.csv(filt_log.df,filt_log_fpath,quote=FALSE)
 
-filt_tpm_fpath = sprintf("%s/filt_merged_tpm.csv",transformed_fpath)
+filt_tpm_fpath = sprintf("%s/filt_merged_tpm.csv",transformed_dir)
 write.csv(filt_tpm.df,filt_tpm_fpath,quote=FALSE)
 
 ```
