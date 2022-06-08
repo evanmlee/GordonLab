@@ -259,7 +259,7 @@ ggsave(hist_fpath,width=12,heigh=8,units="in")
 #Testing for qqplots
 ```{r}
 # for (expr.df in list(filt_vst.df,filt_log.df,filt_rlog.df)) {
-for (expr.df in list(filt_rlog.df)) {
+for (expr.df in list(filt_vst.df,filt_log.df,filt_rlog.df)) {
   # prevotella_split_samples <-vector_prev2A_split(filt_rlog.df,split="prevotella")
   prevotella_split_samples <-vector_prev2A_split(expr.df,split="prevotella")
   np_loci <- prevotella_split_samples[[1]]
@@ -270,10 +270,12 @@ for (expr.df in list(filt_rlog.df)) {
   title_str <- sprintf("%s %s expression Q-Q Plot",DEFAULT_TITLE,expr_type)
   # qqp <- qqnorm(expr_vec,main=title_str) 
   # qqline(expr_vec)
-  ks_test <- ks.test(expr_vec,'pnorm')
+  ks_test <- ks.test(expr_vec,'pnorm',exact=TRUE)
   ks_p <- ks_test$p.value
   ks_D <- ks_test$statistic
-  
+  print(ks_p)
+  print(ks_D)
+}
 }
 ```
 
