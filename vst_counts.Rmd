@@ -5,43 +5,40 @@ output: html_notebook
 ```{r}
 library(DESeq2)
 library(tidyverse)
-library(icesTAF)
 library(ggplot2)
 library(patchwork)
-
-#Load tpm.df
-tpm.df <- read.csv("formatted_output/full_merged_tpm.csv",row.names="target_id")
 ```
 
 #Raw counts data transformations (vsc, log)
-Load merged estimated counts table (both int and numeric)
+Load tpm.df, merged estimated counts table (both int and numeric)
 ```{r}
+#Load tpm.df
+tpm.df <- read.csv("formatted_output/full_merged_tpm.csv",row.names="target_id")
+
 merged_counts_int.df <- read.csv("formatted_output/full_merged_count_int.csv",row.names="target_id")
 mc_int_matrix <- data.matrix(merged_counts_int.df)
 mode(mc_int_matrix) <- "integer"
 
 merged_counts_num.df <- read.csv("formatted_output/full_merged_count.csv",row.names="target_id")
 mc_num_matrix = data.matrix(merged_counts_num.df)
-
-
-
 ```
 
 1. VST of int version of full merged counts
 2. log transform of numeric full merged counts 
 ```{r}
+PSEUDOCOUNT <- 0.1
+transformed_dir = "formatted_output/transformed"
+dir.create(file.path(getwd(),transformed_dir),showWarnings = FALSE)
+
 TRANSFORM_FULL_DATA <- FALSE 
 if (TRANSFORM_FULL_DATA) {
   vsc.df <- as.data.frame(vst(mc_int_matrix))
-  transformed_fpath = "formatted_output/transformed"
-  mkdir(transformed_fpath)
-  vsc_fpath = sprintf("%s/full_merged_vst.csv",transformed_fpath)
+  vsc_fpath = sprintf("%s/full_merged_vst.csv",transformed_dir)
   write.csv(vsc.df,vsc_fpath,quote=FALSE)
   
-  PSEUDOCOUNT = 0.1
   log_mc = log(mc_num_matrix + PSEUDOCOUNT)
   log_mc.df <- as.data.frame(log_mc)
-  log_mc_fpath = sprintf("%s/full_merged_log.csv",transformed_fpath)
+  log_mc_fpath = sprintf("%s/full_merged_log.csv",transformed_dir)
   write.csv(log_mc.df,log_mc_fpath)
 }
 ```
@@ -63,6 +60,7 @@ if (PLOT_RAW_HISTS) {
 }
 
 ```
+
 ```{r}
 #Tpm and prevalence filtering functions#
 get_filtered_gene_vec <- function(tpm.df, inp_threshold, inp_prevalence) {
@@ -122,16 +120,16 @@ filt_rlog.df <-as.data.frame(rlog(mc_filt_matrix))
 filt_log.df <- as.data.frame(log(data.matrix(mc_num.filt.df) + PSEUDOCOUNT))
 
 #Write filtered dataframes to csv 
-filt_vst_fpath = sprintf("%s/filt_merged_vst.csv",transformed_fpath)
+filt_vst_fpath = sprintf("%s/filt_merged_vst.csv",transformed_dir)
 write.csv(filt_vst.df,filt_vst_fpath,quote=FALSE)
 
-filt_rlog_fpath = sprintf("%s/filt_merged_rlog.csv",transformed_fpath)
+filt_rlog_fpath = sprintf("%s/filt_merged_rlog.csv",transformed_dir)
 write.csv(filt_rlog.df,filt_rlog_fpath,quote=FALSE)
 
-filt_log_fpath = sprintf("%s/filt_merged_log.csv",transformed_fpath)
+filt_log_fpath = sprintf("%s/filt_merged_log.csv",transformed_dir)
 write.csv(filt_log.df,filt_log_fpath,quote=FALSE)
 
-filt_tpm_fpath = sprintf("%s/filt_merged_tpm.csv",transformed_fpath)
+filt_tpm_fpath = sprintf("%s/filt_merged_tpm.csv",transformed_dir)
 write.csv(filt_tpm.df,filt_tpm_fpath,quote=FALSE)
 
 ```
@@ -260,7 +258,8 @@ ggsave(hist_fpath,width=12,heigh=8,units="in")
 
 #Testing for qqplots
 ```{r}
-for (expr.df in list(filt_vst.df,filt_log.df,filt_rlog.df)) {
+# for (expr.df in list(filt_vst.df,filt_log.df,filt_rlog.df)) {
+for (expr.df in list(filt_rlog.df)) {
   # prevotella_split_samples <-vector_prev2A_split(filt_rlog.df,split="prevotella")
   prevotella_split_samples <-vector_prev2A_split(expr.df,split="prevotella")
   np_loci <- prevotella_split_samples[[1]]
@@ -271,11 +270,10 @@ for (expr.df in list(filt_vst.df,filt_log.df,filt_rlog.df)) {
   title_str <- sprintf("%s %s expression Q-Q Plot",DEFAULT_TITLE,expr_type)
   # qqp <- qqnorm(expr_vec,main=title_str) 
   # qqline(expr_vec)
-  ks_test <- ks.test(expr_vec,'pnorm',exact=TRUE)
+  ks_test <- ks.test(expr_vec,'pnorm')
   ks_p <- ks_test$p.value
   ks_D <- ks_test$statistic
-  print(ks_p)
-  print(ks_D)
+  
 }
 ```
 
