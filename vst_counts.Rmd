@@ -3,18 +3,18 @@ title: "VST_counts"
 output: html_notebook
 ---
 ```{r}
-library(ggplot2)
-library(DESeq2)
-library(tidyverse)
-# library(icesTAF)
-library(patchwork)
-#Load tpm.df
-tpm.df <- read.csv("formatted_output/full_merged_tpm.csv",row.names="target_id")
+library(ggplot2,quietly=T,warn.conflicts = F)
+library(DESeq2,quietly=T,warn.conflicts = F)
+library(tidyverse,quietly=T,warn.conflicts = F)
+library(patchwork,quietly=T,warn.conflicts = F)
 ```
 
 #Raw counts data transformations (vsc, log)
-Load merged estimated counts table (both int and numeric)
+Load tpm.df, merged estimated counts table (both int and numeric)
 ```{r}
+#Load tpm.df for later use with tpm filtering functions 
+tpm.df <- read.csv("formatted_output/full_merged_tpm.csv",row.names="target_id")
+#Load merged counts 
 merged_counts_int.df <- read.csv("formatted_output/full_merged_count_int.csv",row.names="target_id")
 mc_int_matrix <- data.matrix(merged_counts_int.df)
 mode(mc_int_matrix) <- "integer"
@@ -58,12 +58,20 @@ if (PLOT_RAW_HISTS) {
   log_hist + ggtitle("Log Counts Histogram") + theme(plot.title = element_text(hjust = 0.5))
 }
 ```
+Tpm and prevalence filtering functions
 ```{r}
-#Tpm and prevalence filtering functions#
-get_filtered_gene_vec <- function(tpm.df, inp_threshold, inp_prevalence) {
-  # tpm.df = locus rows x sample columns
-  # inp_threshold = threshold of tpm
-  # inp_prevalence = the proportion of samples that are above inp_threshold
+#' Returns a vector of gene loci meeting tpm and prevalence thresholds
+#' @param tpm.df = locus rows x sample columns
+#' @param inp_threshold = threshold of tpm
+#' @param inp_prevalence = the proportion of samples that are above inp_threshold
+#' @param CECAL_ONLY c(TRUE,FALSE), if TRUE will only use cecal contents for tpm and prevalence filtering 
+get_filtered_gene_vec <- function(tpm.df, inp_threshold, inp_prevalence,CECAL_ONLY=FALSE) {
+
+  if (CECAL_ONLY) { 
+    CECAL_COL_RE = "cecal"
+    cecal_samples <- grep(CECAL_COL_RE, colnames(filt_rlog.df)) 
+    tpm.df <- dplyr::select(tpm.df,cecal_samples)
+  }
   num_samples <- ncol(tpm.df)
   genes_passing <- rownames(data.frame(logic = rowSums(tpm.df > inp_threshold) > num_samples*inp_prevalence) %>% filter(logic == TRUE))
   return(genes_passing)
@@ -230,29 +238,84 @@ ggsave(hist_fpath,width=12,heigh=8,units="in")
 ```
 
 
-#Testing for qqplots
+#Testing for meanSdPlots, QQ (negative binomial)
 ```{r}
-for (expr.df in list(filt_vst.df,filt_log.df,filt_rlog.df)) {
-  # prevotella_split_samples <-vector_prev2A_split(filt_rlog.df,split="prevotella")
-  prevotella_split_samples <-vector_prev2A_split(expr.df,split="prevotella")
-  np_loci <- prevotella_split_samples[[1]]
-  expr_vec <- np_loci
-  par(mfrow=c(1,1))
-  DEFAULT_TITLE="Non-prevotella loci"
-  expr_type <- "rlog"
-  title_str <- sprintf("%s %s expression Q-Q Plot",DEFAULT_TITLE,expr_type)
-  # qqp <- qqnorm(expr_vec,main=title_str) 
-  # qqline(expr_vec)
-  ks_test <- ks.test(expr_vec,'pnorm',exact=TRUE)
-  ks_p <- ks_test$p.value
-  ks_D <- ks_test$statistic
-  print(ks_p)
-  print(ks_D)
+# for (expr.df in list(filt_vst.df,filt_log.df,filt_rlog.df)) {
+#   # prevotella_split_samples <-vector_prev2A_split(filt_rlog.df,split="prevotella")
+#   prevotella_split_samples <-vector_prev2A_split(expr.df,split="prevotella")
+#   np_loci <- prevotella_split_samples[[1]]
+#   expr_vec <- np_loci
+#   expr_mean <- mean(expr_vec)
+#   expr_std <- sd(expr_vec)
+#   par(mfrow=c(1,1))
+#   DEFAULT_TITLE="Non-prevotella loci"
+#   expr_type <- "rlog"
+#   title_str <- sprintf("%s %s expression Q-Q Plot",DEFAULT_TITLE,expr_type)
+#   # qqp <- qqnorm(expr_vec,main=title_str) 
+#   # qqline(expr_vec)
+#   ks_test <- ks.test(expr_vec,'pnorm',mean=expr_mean,sd=expr_std)
+#   ks_p <- ks_test$p.value
+#   ks_D <- ks_test$statistic
+#   print(ks_p)
+#   print(ks_D)
+# }
+# ks.test(expr_vec,'pnorm',mean=expr_mean,sd=expr_std)
+
+library("vsn")
+
+PREVOTELLA_ROW_RE= "(NJCFFJJN)|(NBCBLOMG)"
+np_filt_log.df <- filter(filt_log.df,!grepl(PREVOTELLA_ROW_RE,rownames(filt_log.df)))  
+np_filt_rlog.df <- filter(filt_rlog.df,!grepl(PREVOTELLA_ROW_RE,rownames(filt_rlog.df)))
+np_filt_vst.df <- filter(filt_vst.df,!grepl(PREVOTELLA_ROW_RE,rownames(filt_vst.df)))
+
+CECAL_ONLY = TRUE
+if (CECAL_ONLY) {
+  # prevotella_samples <- grep(PREVOTELLA_COL_RE, colnames(tpm.df)) #example code
+  #prevotella.df <- select(tpm.df,prevotella_samples)
+  CECAL_COL_RE = "cecal"
+  cecal_samples <- grep(CECAL_COL_RE, colnames(filt_rlog.df)) 
+  np_filt_rlog.df <- dplyr::select(np_filt_rlog.df,cecal_samples)
+  np_filt_log.df <- dplyr::select(np_filt_log.df,cecal_samples)
+  np_filt_vst.df <- dplyr::select(np_filt_vst.df,cecal_samples)
 }
+
+#MeanSD hex bin plots   
+meanSdPlot(data.matrix(np_filt_vst.df),ranks=TRUE)
+meanSdPlot(data.matrix(np_filt_log.df),ranks=TRUE)
+meanSdPlot(data.matrix(np_filt_rlog.df),ranks=TRUE)
+
+np_filt_vst.vec <- unlist(np_filt_vst.df)
+np_filt_log.vec <- unlist(np_filt_log.df)
+
+
+
+
+np_filt_rlog.vec <- unlist(np_filt_rlog.df)
+
+#QQ Plots - NB distribution 
+library(MASS)
+mode(np_filt_rlog.vec) <- "integer"
+head(np_filt_rlog.vec)
+print(min(np_filt_rlog.vec))
+np_filt_rlog.vec <- np_filt_rlog.vec - min(np_filt_rlog.vec)
+head(np_filt_rlog.vec)
+params = fitdistr(np_filt_rlog.vec,"Negative Binomial")
+fit_size <- params$estimate[[1]]
+fit_mu <- params$estimate[[2]]
+np_filt_rlog.s = sort(np_filt_rlog.vec)
+n <- length(np_filt_rlog.vec)
+p <- ppoints(n)
+np_filt_rlog.q = qnbinom(ppoints(np_filt_rlog.vec),size=fit_size,mu=fit_mu)
+plot(np_filt_rlog.q, np_filt_rlog.s, col="red", xlab="Negative Binomial theoretical quantiles", ylab="Data quantiles")
+abline(0,1)
 ```
 
 
-
+```{r}
+print(params$estimate)
+print(params$estimate[[1]])
+print(params$estimate[[2]])
+```
 TODO: Test different tpm and prevalence thresholds (paramter sweep), assess normality and 
 number of genes retained 
 TODO: Compare vst and log of tpm vs vst/log of counts
