@@ -2,10 +2,19 @@
 title: "VST_counts"
 output: html_notebook
 ---
+
+# ```{r setup, include=FALSE, dev="CairoPNG"}
+# library(Cairo)
+# Sys.setenv("DISPLAY"=":0")
+# knitr::opts_chunk$set(echo = TRUE, dev="CairoPNG")
+# options(bitmapType='cairo')
+# getOption('bitmapType')
+# ```
+
 ```{r}
 library(ggplot2,quietly=T,warn.conflicts = F)
-library(DESeq2,quietly=T,warn.conflicts = F)
 library(tidyverse,quietly=T,warn.conflicts = F)
+library(DESeq2,quietly=T,warn.conflicts = F)
 library(patchwork,quietly=T,warn.conflicts = F)
 ```
 
@@ -277,40 +286,59 @@ print(combined_exp_prev)
 ggsave(hist_fpath,width=12,heigh=8,units="in")
 ```
 
-#Testing for meanSdPlots, QQ (negative binomial)
+Test cell for RStudio plotting functionality 
 ```{r}
-# for (expr.df in list(filt_vst.df,filt_log.df,filt_rlog.df)) {
-#   # prevotella_split_samples <-vector_prev2A_split(filt_rlog.df,split="prevotella")
-#   prevotella_split_samples <-vector_prev2A_split(expr.df,split="prevotella")
-#   np_loci <- prevotella_split_samples[[1]]
-#   expr_vec <- np_loci
-#   expr_mean <- mean(expr_vec)
-#   expr_std <- sd(expr_vec)
-#   par(mfrow=c(1,1))
-#   DEFAULT_TITLE="Non-prevotella loci"
-#   expr_type <- "rlog"
-#   title_str <- sprintf("%s %s expression Q-Q Plot",DEFAULT_TITLE,expr_type)
-#   # qqp <- qqnorm(expr_vec,main=title_str) 
-#   # qqline(expr_vec)
-#   ks_test <- ks.test(expr_vec,'pnorm',mean=expr_mean,sd=expr_std)
-#   ks_p <- ks_test$p.value
-#   ks_D <- ks_test$statistic
-#   print(ks_p)
-#   print(ks_D)
-# }
-# ks.test(expr_vec,'pnorm',mean=expr_mean,sd=expr_std)
+rlog_hist_prev_split <- expr_histogram(filt_rlog.df,expr_type="rlog",split_type="prevotella")
 
+```
+
+
+#Helper Functions for mean-SD Plots, QQ-plots 
+```{r}
 library("vsn")
+library(MASS)
+#' Wrapper function for vsn::meanSdPlot
+#' @param filt_expr.df DataFrame of expression data to generate mean-SD plot; rows must be loci/features for compliance with vsn::meanSdPlot
+#' @param expr_type c("vst","log","rlog") for title string of plot 
+meanSD_plot <- function(filt_expr.df,expr_type,ranks=TRUE) {
+  msp <- vsn::meanSdPlot(data.matrix(filt_expr.df),ranks=ranks)
+  title = sprintf("Mean Standard Deviation Plot, %s expression data",expr_type)
+  msp <- msp + labs(title=title,x="Rank(mean)",y="Standard Deviation") + theme(plot.title = element_text(hjust = 0.5))
+  return(msp)
+}
+
+#' Wrapper function for qqplots for transformed expression data
+#' @param filt_expr.df DataFrame of transformed expression data 
+#' @param expr_type c("vst","log","rlog") for title string of plot and choice of background distribution for QQplot
+filt_qq_plot <- function(filt_expr.df,expr_type) {
+  mode(np_filt_rlog.vec) <- "integer"
+  head(np_filt_rlog.vec)
+  print(min(np_filt_rlog.vec))
+  np_filt_rlog.vec <- np_filt_rlog.vec - min(np_filt_rlog.vec)
+  head(np_filt_rlog.vec)
+  params = fitdistr(np_filt_rlog.vec,"Negative Binomial")
+  fit_size <- params$estimate[[1]]
+  fit_mu <- params$estimate[[2]]
+  np_filt_rlog.s = sort(np_filt_rlog.vec)
+  n <- length(np_filt_rlog.vec)
+  p <- ppoints(n)
+  np_filt_rlog.q = qnbinom(ppoints(np_filt_rlog.vec),size=fit_size,mu=fit_mu)
+  plot(np_filt_rlog.q, np_filt_rlog.s, col="red", xlab="Negative Binomial theoretical quantiles", ylab="Data quantiles")
+  abline(0,1)
+}
+```
+
+```{r}
+
 
 PREVOTELLA_ROW_RE= "(NJCFFJJN)|(NBCBLOMG)"
 np_filt_log.df <- filter(filt_log.df,!grepl(PREVOTELLA_ROW_RE,rownames(filt_log.df)))  
 np_filt_rlog.df <- filter(filt_rlog.df,!grepl(PREVOTELLA_ROW_RE,rownames(filt_rlog.df)))
 np_filt_vst.df <- filter(filt_vst.df,!grepl(PREVOTELLA_ROW_RE,rownames(filt_vst.df)))
 
-CECAL_ONLY = TRUE
-if (CECAL_ONLY) {
-  # prevotella_samples <- grep(PREVOTELLA_COL_RE, colnames(tpm.df)) #example code
-  #prevotella.df <- select(tpm.df,prevotella_samples)
+CECAL_ONLY_QC = TRUE
+if (CECAL_ONLY_QC) {
+  #Redundant Filtering if CECAL_ONLY=TRUE during filtering step
   CECAL_COL_RE = "cecal"
   cecal_samples <- grep(CECAL_COL_RE, colnames(filt_rlog.df)) 
   np_filt_rlog.df <- dplyr::select(np_filt_rlog.df,cecal_samples)
@@ -318,21 +346,18 @@ if (CECAL_ONLY) {
   np_filt_vst.df <- dplyr::select(np_filt_vst.df,cecal_samples)
 }
 
-#MeanSD hex bin plots   
-meanSdPlot(data.matrix(np_filt_vst.df),ranks=TRUE)
-meanSdPlot(data.matrix(np_filt_log.df),ranks=TRUE)
-meanSdPlot(data.matrix(np_filt_rlog.df),ranks=TRUE)
+#MeanSD hex bin plots; patchwork combine   
+vst_msp <- meanSD_plot(np_filt_vst.df,expr_type="vst",ranks=TRUE)
+log_msp <- meanSD_plot(np_filt_log.df,expr_type="log",ranks=TRUE)
+rlog_msp <- meanSD_plot(np_filt_rlog.df,expr_type="rlog",ranks=TRUE)
+combinged_meansd <- vst_msp + log_msp + rlog_msp + plot_layout(ncol = 3, guides = "collect")
 
 np_filt_vst.vec <- unlist(np_filt_vst.df)
 np_filt_log.vec <- unlist(np_filt_log.df)
-
-
-
-
 np_filt_rlog.vec <- unlist(np_filt_rlog.df)
 
 #QQ Plots - NB distribution 
-library(MASS)
+
 mode(np_filt_rlog.vec) <- "integer"
 head(np_filt_rlog.vec)
 print(min(np_filt_rlog.vec))
