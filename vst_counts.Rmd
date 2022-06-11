@@ -16,6 +16,8 @@ library(ggplot2,quietly=T,warn.conflicts = F)
 library(tidyverse,quietly=T,warn.conflicts = F)
 library(DESeq2,quietly=T,warn.conflicts = F)
 library(patchwork,quietly=T,warn.conflicts = F)
+library(vsn)
+library(MASS)
 ```
 
 #Raw counts data transformations (vsc, log)
@@ -283,7 +285,7 @@ if (SYNC_YLIM) {
 #Save figure 
 hist_fpath <- sprintf("figures/expression_hist/%s_transformed_hist.png",param_str)
 print(combined_exp_prev)
-ggsave(hist_fpath,width=12,heigh=8,units="in")
+ggsave(hist_fpath,width=12,height=8,units="in")
 ```
 
 Test cell for RStudio plotting functionality 
@@ -295,36 +297,70 @@ rlog_hist_prev_split <- expr_histogram(filt_rlog.df,expr_type="rlog",split_type=
 
 #Helper Functions for mean-SD Plots, QQ-plots 
 ```{r}
-library("vsn")
-library(MASS)
+
 #' Wrapper function for vsn::meanSdPlot
 #' @param filt_expr.df DataFrame of expression data to generate mean-SD plot; rows must be loci/features for compliance with vsn::meanSdPlot
 #' @param expr_type c("vst","log","rlog") for title string of plot 
 meanSD_plot <- function(filt_expr.df,expr_type,ranks=TRUE) {
-  msp <- vsn::meanSdPlot(data.matrix(filt_expr.df),ranks=ranks)
-  title = sprintf("Mean Standard Deviation Plot, %s expression data",expr_type)
-  msp <- msp + labs(title=title,x="Rank(mean)",y="Standard Deviation") + theme(plot.title = element_text(hjust = 0.5))
-  return(msp)
+  if (ranks) {
+    xlab = "Mean"
+  } else {
+    xlab = "Rank(mean)"
+  }
+  msp <- vsn::meanSdPlot(data.matrix(filt_expr.df),ranks=ranks,
+                         xlab=xlab,ylab="Standard Deviation")
+  title = sprintf("Mean Standard Deviation Plot,\n %s expression data",expr_type)
+  msp$gg <- msp$gg + ggtitle(title) + theme(plot.title = element_text(hjust = 0.5))
+  return(msp$gg)
 }
 
 #' Wrapper function for qqplots for transformed expression data
 #' @param filt_expr.df DataFrame of transformed expression data 
 #' @param expr_type c("vst","log","rlog") for title string of plot and choice of background distribution for QQplot
-filt_qq_plot <- function(filt_expr.df,expr_type) {
-  mode(np_filt_rlog.vec) <- "integer"
-  head(np_filt_rlog.vec)
-  print(min(np_filt_rlog.vec))
-  np_filt_rlog.vec <- np_filt_rlog.vec - min(np_filt_rlog.vec)
-  head(np_filt_rlog.vec)
-  params = fitdistr(np_filt_rlog.vec,"Negative Binomial")
+#' @param distributiuon if expr_type is not one of above options, distribution can be provided to pass to MASS::fitdistr. If expr_type is not one of above and distrivution is not provided, raise error (todo)
+filt_qq_plot <- function(filt_expr.df,expr_type,distribution=NULL) {
+  #Flatten filt_expr.df to vector, convert to int, and subtract min (ie start negative binomial distribution at 0)
+  filt_expr.vec <- unlist(filt_expr.df)
+  
+  if (expr_type == "rlog" | expr_type == "vst") {
+    mode(filt_expr.vec) <- "integer"
+    filt_expr.vec <- filt_expr.vec - min(filt_expr.vec)
+    params = fitdistr(filt_expr.vec,"Negative Binomial")
+  } else if (expr_type == "log") {
+    params = fitdistr(filt_expr.vec,"Normal")
+  } else if (distribution) {
+    if (distribution %in% list("Negative Binomial","Geometric","Poisson")) {
+      mode(filt_expr.vec) <- "integer"
+      filt_expr.vec <- filt_expr.vec - min(filt_expr.vec)
+    }
+    params = fitdistr(filt_expr.vec,distribution)
+  } else {
+    stop("Specify distribution with a compatible distribution for MASS::fitdistr or use expr_type = rlog, log, or vst")
+  }
+    
   fit_size <- params$estimate[[1]]
   fit_mu <- params$estimate[[2]]
-  np_filt_rlog.s = sort(np_filt_rlog.vec)
-  n <- length(np_filt_rlog.vec)
+  filt_expr.s = sort(filt_expr.vec)
+  n <- length(filt_expr.vec)
   p <- ppoints(n)
-  np_filt_rlog.q = qnbinom(ppoints(np_filt_rlog.vec),size=fit_size,mu=fit_mu)
-  plot(np_filt_rlog.q, np_filt_rlog.s, col="red", xlab="Negative Binomial theoretical quantiles", ylab="Data quantiles")
-  abline(0,1)
+  filt_exr.q = qnbinom(ppoints(filt_expr.vec),size=fit_size,mu=fit_mu)
+  
+  #DataFrame format
+  # split.df <- data.frame(variable=c(rep("Colonized Loci",length(expected_expr)),
+                                      # rep("Non-colonized loci",length(expected_no_expr))),
+                           # value=c(expected_expr,expected_no_expr))
+  #}
+  qq.df <- data.frame(theoretical=filt_expr.q,expr=filt_expr.s)
+  head(qq.df)
+  
+  
+  # qqp <- plot(np_filt_rlog.q, np_filt_rlog.s, col="red", xlab="Negative Binomial theoretical quantiles", ylab="Data quantiles")
+  qqp <- ggplot(qq.df, aes(theoretical,expr))
+  title = "QQ-Plot %s expression against fit %s"
+  qqp + geom_point() + labs(xlab="Negative Binomial Theoretical Quantiles",
+                            ylab="Data Quantiles", title="QQ-Plot of ")
+  qqp <- qqp + abline(0,1)
+  return(qqp)
 }
 ```
 
@@ -346,32 +382,29 @@ if (CECAL_ONLY_QC) {
   np_filt_vst.df <- dplyr::select(np_filt_vst.df,cecal_samples)
 }
 
-#MeanSD hex bin plots; patchwork combine   
+#MeanSD hex bin plots; patchwork combine (and hide vst/rlog legends since not collected properly)
 vst_msp <- meanSD_plot(np_filt_vst.df,expr_type="vst",ranks=TRUE)
 log_msp <- meanSD_plot(np_filt_log.df,expr_type="log",ranks=TRUE)
 rlog_msp <- meanSD_plot(np_filt_rlog.df,expr_type="rlog",ranks=TRUE)
-combinged_meansd <- vst_msp + log_msp + rlog_msp + plot_layout(ncol = 3, guides = "collect")
 
-np_filt_vst.vec <- unlist(np_filt_vst.df)
-np_filt_log.vec <- unlist(np_filt_log.df)
-np_filt_rlog.vec <- unlist(np_filt_rlog.df)
+vst_msp <- vst_msp + theme(legend.position = "none")
+rlog_msp <- rlog_msp + theme(legend.position = "none")
+combined_meansd <- vst_msp + log_msp + rlog_msp + plot_layout(ncol = 3, guides = "collect")
+
+msd_fpath <- sprintf("figures/expression_hist/%s_msd.png",param_str)
+print(combined_meansd)
+ggsave(msd_fpath,width=12,height=4,units="in")
 
 #QQ Plots - NB distribution 
 
-mode(np_filt_rlog.vec) <- "integer"
-head(np_filt_rlog.vec)
-print(min(np_filt_rlog.vec))
-np_filt_rlog.vec <- np_filt_rlog.vec - min(np_filt_rlog.vec)
-head(np_filt_rlog.vec)
-params = fitdistr(np_filt_rlog.vec,"Negative Binomial")
-fit_size <- params$estimate[[1]]
-fit_mu <- params$estimate[[2]]
-np_filt_rlog.s = sort(np_filt_rlog.vec)
-n <- length(np_filt_rlog.vec)
-p <- ppoints(n)
-np_filt_rlog.q = qnbinom(ppoints(np_filt_rlog.vec),size=fit_size,mu=fit_mu)
-plot(np_filt_rlog.q, np_filt_rlog.s, col="red", xlab="Negative Binomial theoretical quantiles", ylab="Data quantiles")
-abline(0,1)
+vst_qqp <- filt_qq_plot(np_filt_vst.df,expr_type="vst")
+log_qqp <- filt_qq_plot(np_filt_log.df,expr_type="log")
+rlog_qqp <- filt_qq_plot(np_filt_rlog.df,expr_type="rlog")
+combined_qqp <- vst_qqp + log_qqp + rlog_qqp + plot_layout(ncol = 3, guides = "collect")
+qqp_fpath <- sprintf("figures/expression_hist/%s_qqp.png",param_str)
+print(combined_qqp)
+ggsave(qqp_fpath,width=12,height=4,units="in")
+
 ```
 
 TODO: Test different tpm and prevalence thresholds (paramter sweep), assess normality and 
