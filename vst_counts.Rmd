@@ -116,6 +116,35 @@ get_prevotella_filtered_gene_vec <- function(tpm.df, inp_threshold, inp_prevalen
 }
 ```
 
+```{r}
+get_non_prevotella_filtered_gene_vec <- function(tpm.df, inp_threshold, inp_prevalence,CECAL_ONLY=FALSE) {
+    #' @param tpm.df locus rows x sample columns
+    #' @param inp_threshold threshold of tpm
+    #' @param inp_prevalence the proportion of samples that are above inp_threshold
+    #' @param CECAL_ONLY TRUE,FALSE; default FALSE. If TRUE, only cecal samples (ie columns containing "cecal") will be used to determine if loci meet tpm and prevalence thresholds. 
+    #' @return genes_passing Vector of locus tags corresponding to loci which 
+    #' are NOT from Prevotella species and also meet the above threshold and 
+    #' prevalence criteria 
+  PREVOTELLA_ROW_RE <- "(NJCFFJJN)|(NBCBLOMG)"
+  PREVOTELLA_COL_RE <- "1C"
+  
+  if (CECAL_ONLY) { 
+    CECAL_COL_RE = "cecal"
+    cecal_samples <- grep(CECAL_COL_RE, colnames(tpm.df)) 
+    tpm.df <- dplyr::select(tpm.df,cecal_samples)
+  }
+  num_samples <- ncol(tpm.df)
+  prevotella_samples <- grep(PREVOTELLA_COL_RE, colnames(tpm.df))
+  prevotella.df <- dplyr::select(tpm.df,prevotella_samples)
+  num_prev_samples <- ncol(prevotella.df)
+  #Logic has one cases: 
+  #1.number of samples in tpm.df which have tpm > inp_threshold is 
+  #greater than number of samples * inp_prevalence AND locus does not match PREVOTELLA_ROW_RE 
+  # genes_passing <- rownames(data.frame(logic = ((rowSums(tpm.df > inp_threshold) > num_samples*inp_prevalence) | (rowSums(prevotella.df > inp_threshold) >num_prev_samples*inp_prevalence & (grepl(PREVOTELLA_ROW_RE, row.names(tpm.df)))))) %>% filter(logic == TRUE))
+    genes_passing <- rownames(data.frame(logic = ((rowSums(tpm.df > inp_threshold) > num_samples*inp_prevalence) & !(grepl(PREVOTELLA_ROW_RE, row.names(tpm.df))))) %>% filter(logic==TRUE))
+  return(genes_passing)
+}
+```
 
 ```{r}
 # inp_threshold = 5 #Steven MAG default
@@ -123,6 +152,7 @@ get_prevotella_filtered_gene_vec <- function(tpm.df, inp_threshold, inp_prevalen
 inp_threshold = 3
 inp_prevalence = 0.3
 CECAL_ONLY = TRUE
+FILTER_SPEC = "nonprevotella"
 
 #Dir Path for filtered datasets given parameter settings 
 if (CECAL_ONLY) {
@@ -130,7 +160,7 @@ if (CECAL_ONLY) {
 } else {
   sample_flag = "all"
 }
-param_str <- sprintf("thr%s_prev%s_%s",inp_threshold,inp_prevalence,sample_flag)
+param_str <- sprintf("thr%s_prev%s_%s_%s",inp_threshold,inp_prevalence,sample_flag,FILTER_SPEC)
 filt_param_dir <-  sprintf("formatted_output/transformed/%s",param_str)
 filt_param_dir_path <-file.path(getwd(),filt_param_dir) 
 dir.create(filt_param_dir_path,showWarnings = FALSE)
@@ -139,6 +169,7 @@ filt_vst_fpath = sprintf("%s/filt_merged_vst.csv",filt_param_dir_path)
 filt_rlog_fpath = sprintf("%s/filt_merged_rlog.csv",filt_param_dir_path)
 filt_log_fpath = sprintf("%s/filt_merged_log.csv",filt_param_dir_path)
 filt_tpm_fpath = sprintf("%s/filt_merged_tpm.csv",filt_param_dir_path)
+
 
 FORCE_RECALC = FALSE
 if (file.exists(filt_vst_fpath) & ! FORCE_RECALC) {
@@ -150,7 +181,14 @@ if (file.exists(filt_vst_fpath) & ! FORCE_RECALC) {
 } else {
   #Generate filtered gene vector using above tpm/prevalence thresholds and  whether or not to use cecal samples only for thresholding
   prev_filt_genes.vec <- get_prevotella_filtered_gene_vec(tpm.df,inp_threshold,inp_prevalence,CECAL_ONLY = CECAL_ONLY)
-  filt_genes.vec <- prev_filt_genes.vec
+  nonprev_filt_genes.vec <- get_non_prevotella_filtered_gene_vec(tpm.df,inp_threshold,inp_prevalence,CECAL_ONLY = CECAL_ONLY)
+  if (FILTER_SPEC=="nonprevotella") {
+    filt_genes.vec <- nonprev_filt_genes.vec
+  }
+  else if (FILTER_SPEC=="prevotella") {
+    filt_genes.vec <- prev_filt_genes.vec
+  }
+  
   length(filt_genes.vec)
   mc_int_filt.df <- merged_counts_int.df[rownames(merged_counts_int.df) %in% filt_genes.vec,]
   mc_num_filt.df <- merged_counts_num.df[rownames(merged_counts_num.df) %in% filt_genes.vec,]
